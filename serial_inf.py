@@ -1,19 +1,25 @@
 #!/usr/bin/python
 
-import sys
 import glob
 import serial
+import sys
+import threading
 
 # =============================================================================
 #                       Serial Communication Interface
 # =============================================================================
 
+
 class SerialConn:
     """
         Acts as the interface for a Serial connection
+
+        :type _serial_conn serial.Serial
+        :type _sema threading.Semaphor
     """
     _DEFAULT_TIMEOUT = 1
     _serial_conn = None
+    _sema = None
 
     def __init__(self, port, buad, timeout=_DEFAULT_TIMEOUT):
         """ Initializes a serial connection by creating a connection if the port
@@ -29,6 +35,7 @@ class SerialConn:
         :param timeout:
             The read timeout in seconds
         """
+        self._sema = threading.Semaphore()
         if port != "":
             self.connect(port, buad, timeout)
 
@@ -73,7 +80,11 @@ class SerialConn:
         for code in cmd.split(" "):
             encode_cmd += chr(int(code))
         # Sends the encoded command.
-        return self._serial_conn.write(encode_cmd)
+
+        self._sema.acquire()                # Acquire Lock
+        rtn = self._serial_conn.write(encode_cmd)
+        self._sema.release()                # Release Lock
+        return rtn
 
     def read_data(self, bytes):
         """ Reads data on the provided serial connection. If a timeout is set on
@@ -92,6 +103,7 @@ class SerialConn:
 # =============================================================================
 #                       Serial Communication Helpers
 # =============================================================================
+
 
 def list_serial_ports():
     """ Creates a list of all connected serial ports on the system. This

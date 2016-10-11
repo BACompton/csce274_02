@@ -10,6 +10,7 @@ import serial_inf
 # =============================================================================
 
 SENSOR_UPDATE_WAIT = .015   # Time in between sensor updates
+WHEEL_BASE = 235.0
 
 _BAUD_RATE = 115200      # iRobot Create 2 Default baud rate
 _TIMEOUT = 1             # The default read timeout to avoid indefinite blocking
@@ -17,7 +18,6 @@ _SENSORS_OPCODE = "142"  # Opcode for the sensors command
 _BYTE = 0xFF             # Helps isolate a byte
 _BYTE_SIZE = 8           # The number of bit in a byte of iRobot Create 2
 _WHEEL_DIAMETER = 72.0
-_WHEEL_BASE = 235.0
 _COUNTS_PER_REV = 508.8
 
 
@@ -282,7 +282,7 @@ class Robot:
         self._warning_song_num = int(math.fabs(song_number)) % 5
 
         # Song is in c major scale and is the 5th (G) to the 3rd (E).
-        cmd = "140 " + str(self._warning_song_num) + " 2 67 16 64"
+        cmd = "140 " + str(self._warning_song_num) + " 2 67 16 64 16"
 
         self._serial_conn.send_command(cmd)
 
@@ -601,9 +601,9 @@ class Robot:
                 # CCW = enc_L -> Backward & enc_R -> Forward
 
                 if dist == Drive.ENCODER_L:
-                    forward = cw
-                elif dist == Drive.ENCODER_R:
                     forward = not cw
+                elif dist == Drive.ENCODER_R:
+                    forward = cw
 
                 if forward is not None:
                     diff[dist] = Robot._encoder_diff(ref_angle[dist],
@@ -615,7 +615,7 @@ class Robot:
                   "a differential drive system."
             return 0
 
-        angle = (diff[Drive.ENCODER_R] - diff[Drive.ENCODER_L]) / _WHEEL_BASE
+        angle = (diff[Drive.ENCODER_R] - diff[Drive.ENCODER_L]) / WHEEL_BASE
 
         if radians:
             return angle

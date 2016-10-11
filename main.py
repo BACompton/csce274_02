@@ -1,8 +1,12 @@
 #!/usr/bin/python
 
+import datetime
+import math
+import random
 import sys
 import threading
 import time
+
 
 import robot_inf
 import serial_inf
@@ -14,33 +18,95 @@ import sensor_inf
 # =============================================================================
 
 # Flag for testing adjustments. This will mainly decide the robot's state.
-prog_test = True
+_prog_test = False
+_log_sema = threading.Semaphore()
+
+
+def _timestamp():
+    """ Gets the timestamp of the local system
+    :return:
+        Returns the current time
+    """
+    return datetime.datetime.fromtimestamp(time.time())\
+                   .strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _log_stmt(log, datum):
+    """ Creates a log statement in the supplied file with the provided datum.
+
+    :type log file
+    :param log:
+        The log file
+    :param datum:
+        The data to log
+    """
+    _log_sema.acquire()                 # Acquire Lock
+    log.write(_timestamp()+","+str(datum)+"\n")
+    _log_sema.release()                 # Release Lock
 
 
 class DriveControl(threading.Thread):
     """
+        This is the low level actuator controller for the random walk algorithm.
+
         :type _sensor sensor_inf.Sensor
+        :type _log file
         :type _stop bool
     """
     _sensor = None
+    _log = None
     _stop = None
 
-    def __init__(self, sensor):
+    def __init__(self, sensor, log):
         threading.Thread.__init__(self)
         self.setDaemon(True)
         self._stop = False
         self._sensor = sensor
+        self._log = log
 
     def run(self):
-        robot = self._sensor.get_robot()
+        robot = self._sensor.get_robot()        # The robot's connection
+        wheel_vel = 100                         # The absolute value of a wheel
+        next_stmt = "None"                      # Identifies the next log stmt
+        wait_time = 0                           # The time between commands
 
-        while not self._stop:
-            # Drive forward
-            self._wait(robot_inf.SENSOR_UPDATE_WAIT,
-                       robot_inf.SENSOR_UPDATE_WAIT)
+        # Maximum rotation time based on wheel velocity
+        max_rot_time = math.pi*robot_inf.WHEEL_BASE/(4*wheel_vel)
+        # The reference encoder value for the log statement
+        prev_encoder = self._sensor.get_encoders()
+
+        while not self._wait(wait_time, robot_inf.SENSOR_UPDATE_WAIT):
+            # Generate random turn time
+            wait_time = random.uniform(0, max_rot_time)
+            cw = self._turn_cw()                # Turn cw?
+            ccw = self._turn_ccw()              # Turn ccw?
+
+            # Log last action
+            self._log_movement(next_stmt, prev_encoder)
+
+            next_stmt = "Angle"
+            if cw and ccw:
+                # Pick random direction to rotate
+                if bool(random.getrandbits(1)):
+                    self._drive_cw(robot, wheel_vel)
+                else:
+                    self._drive_ccw(robot, wheel_vel)
+                    next_stmt += "CCW"
+            elif cw:
+                self._drive_cw(robot, wheel_vel)
+            elif ccw:
+                self._drive_ccw(robot, wheel_vel)
+                next_stmt += "CCW"
+            else:
+                self._drive_forward(robot, wheel_vel)
+                next_stmt = "Distance"
+                wait_time = robot_inf.SENSOR_UPDATE_WAIT
+
+            prev_encoder = self._sensor.get_encoders()
 
         # Stops robot
-        self._robot.drive_direct(0, 0)
+        self._log_movement(next_stmt, prev_encoder)
+        robot.drive_direct(0, 0)
 
     def stop(self):
         """
@@ -63,9 +129,13 @@ class DriveControl(threading.Thread):
         """
         time_left = wait_time
 
+        # Special Case
+        if time_left == 0:
+            return self._should_stop()
+
         while time_left > 0:
             # Tell the caller it needs to stop
-            if self._stop:
+            if self._should_stop():
                 return True
 
             # Wait another time interval
@@ -76,50 +146,197 @@ class DriveControl(threading.Thread):
             time.sleep(interval_time)
         return False
 
+    def _should_stop(self):
+        """ Determines if the actuator controller should stop.
+        :return:
+            True if the actuator controller should stop.
+        """
+        return self._stop or not self._safe_motion()
 
-def robot_controller():
+    def _safe_motion(self):
+        """ Determines if movement or rotation is safe.
+        :return:
+            True if motion or rotation is safe.
+        """
+        drops = self._sensor.get_wheel_drops()
+
+        for drop in drops:
+            if drops[drop]:
+                self._sensor.get_robot().play_warning_song()
+                _log_stmt(self._log, "UNSAFE")
+                return False
+        return True
+
+    def _turn_cw(self):
+        """ Determines if the robot should rotate clockwise
+        :return:
+            True if the robot should turn clockwise
+        """
+        cliffs = self._sensor.get_cliffs()
+
+        if self._sensor.is_bump(robot_inf.Bump.BUMP_L):
+            return True
+        if cliffs[robot_inf.Cliff.CLIFF_L] or cliffs[robot_inf.Cliff.CLIFF_FL]:
+            self._sensor.get_robot().play_warning_song()
+            _log_stmt(self._log, "UNSAFE")
+            return True
+        return False
+
+    def _turn_ccw(self):
+        """ Determines if the robot should rotate counter-clockwise
+        :return:
+            True if the robot should turn counter-clockwise
+        """
+        cliffs = self._sensor.get_cliffs()
+
+        if self._sensor.is_bump(robot_inf.Bump.BUMP_R):
+            return True
+        if cliffs[robot_inf.Cliff.CLIFF_R] or cliffs[robot_inf.Cliff.CLIFF_FR]:
+            self._sensor.get_robot().play_warning_song()
+            _log_stmt(self._log, "UNSAFE")
+            return True
+        return False
+
+    def _drive_ccw(self, robot, wheel_vel):
+        """ Rotates the robot counter-clockwise.
+
+        :type robot robot_inf.Robot
+        :param robot:
+            The robot's connection
+        :type wheel_vel int
+        :param wheel_vel:
+            The absolute value of a wheel's velocity
+        """
+        robot.drive_direct(wheel_vel, -wheel_vel)
+
+    def _drive_cw(self, robot, wheel_vel):
+        """ Rotates the robot clockwise.
+
+        :type robot robot_inf.Robot
+        :param robot:
+            The robot's connection
+        :type wheel_vel int
+        :param wheel_vel:
+            The absolute value of a wheel's velocity
+        """
+        robot.drive_direct(-wheel_vel, wheel_vel)
+
+    def _drive_forward(self, robot, wheel_vel):
+        """ Drives the robot forward.
+
+        :type robot robot_inf.Robot
+        :param robot:
+            The robot's connection
+        :type wheel_vel int
+        :param wheel_vel:
+            The absolute value of a wheel's velocity
+        """
+        robot.drive_direct(wheel_vel, wheel_vel)
+
+    def _log_movement(self, stmt, prev_encoder):
+        """ Creates a log statement for any movement.
+        :param stmt:
+            The statement type to log
+        :param prev_encoder:
+            The reference encoder values
+        """
+        if stmt == "Distance":
+            _log_stmt(self._log,
+                      str(self._sensor.get_distance(prev_encoder))+" mm")
+        elif stmt.startswith("Angle"):
+            _log_stmt(self._log,
+                      str(self._sensor.get_angle(prev_encoder,
+                                             cw=stmt.endswith("CCW")))
+                      + " deg")
+
+
+class RobotController(threading.Thread):
     """
-
+        High level robot controller. This controller decides when to spawn and
+        kill specific low level actuator controllers.
     """
+    _stop = None
 
-    port_list = serial_inf.list_serial_ports()
+    def __init__(self, sensor, log):
+        threading.Thread.__init__(self)
+        self.setDaemon(True)
+        self._stop = False
 
-    if len(port_list) > 1:
-        print "Requires a serial connection."
-        return -1
+    def stop(self):
+        """
+            Sets the flag to stop the thread to True. The thread will
+            not immediately stop. Instead, the thread will exit safely.
+        """
+        self._stop = True
 
-    # The State space for the robot is the constants defined in
-    # robot_inf.State (change to is thread running)
+    def run(self):
+        port_list = serial_inf.list_serial_ports()
+        file_name = "robot_log.log"
 
-    robot = robot_inf.Robot(port_list[0])     # Serial connection to robot
-    sensor = sensor_inf.Sensor(robot)         # Sensor synchronizer
-    act_control = None                        # Low-level actuator control
+        if len(port_list) > 1:
+            print "Requires a serial connection."
+            return -1
 
-    if prog_test:
-        robot.change_state(robot_inf.State.SAFE)
-    else:
-        robot.change_state(robot_inf.State.FULL)
+        if len(sys.argv) > 1:
+            file_name = sys.argv[1]
 
-    print "Connected to robot"
+        # The State space for the robot is the constants defined in
+        # robot_inf.State (change to is thread running)
 
-    print "Listening for press"
-    while True:
-        # High-Level State Action
-        if sensor.is_btn_pressed(robot_inf.Button.CLEAN):
+        robot = robot_inf.Robot(port_list[0])     # Serial connection to robot
+        sensor = sensor_inf.Sensor(robot)         # Sensor synchronizer
+        act_control = None                        # Low-level actuator control
+        log = open(file_name, "w")
 
-            # Start actuator controller
-            if act_control is None:
-                act_control = DriveControl(sensor)
-                act_control.start()
+        if _prog_test:
+            robot.change_state(robot_inf.State.SAFE)
+        else:
+            robot.change_state(robot_inf.State.FULL)
 
-            # Stop actuator controller
-            else:
-                act_control.stop()
-                act_control = None
+        print "Connected to robot"
 
-        # Clocks while loop to the update rate of the iRobot Create 2.
+        print "Listening for press"
+        while True:
+            # High-Level State Action
+            if sensor.is_btn_pressed(robot_inf.Button.CLEAN):
+                _log_stmt(log, "BUTTON")
+
+                # Start actuator controller
+                if act_control is None:
+                    act_control = DriveControl(sensor, log)
+                    act_control.start()
+
+                # Stop actuator controller
+                else:
+                    act_control.stop()
+                    act_control = None
+
+            # Clocks while loop to the update rate of the iRobot Create 2.
+            time.sleep(robot_inf.SENSOR_UPDATE_WAIT)
+
+        print "Stopping Listening"
+
+        # Stopping all threads, and closing log file
+        if act_control is not None:
+            act_control.stop()
+        sensor.stop_update()
+        log.close()
+
+
+def main():
+    """
+        The main loop that spawns and controls all the threads.
+    """
+    control = RobotController()
+    control.start()
+
+    # Prompt to exit safely
+    while input("Type 'exit' to quit.") != "exit":
         time.sleep(robot_inf.SENSOR_UPDATE_WAIT)
-    print "Stopping Listening"
+
+    control.stop()
+    # Wait for every thing to stop safely
+    control.join()
 
 if __name__ == '__main__':
-    robot_controller()
+    main()

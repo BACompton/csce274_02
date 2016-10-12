@@ -81,9 +81,7 @@ class DriveControl(threading.Thread):
             cw = self._turn_cw()                # Turn cw?
             ccw = self._turn_ccw()              # Turn ccw?
 
-            # Log last action
-            self._log_movement(next_stmt, prev_encoder)
-
+            curr_stmt = next_stmt
             next_stmt = "Angle"
             if cw and ccw:
                 # Pick random direction to rotate
@@ -100,8 +98,12 @@ class DriveControl(threading.Thread):
             else:
                 self._drive_forward(robot, wheel_vel)
                 next_stmt = "Distance"
-                wait_time = robot_inf.SENSOR_UPDATE_WAIT
 
+            # The statement below will limit the number of distance log actions
+            # if curr_stmt != "Distance" or next_stmt != curr_stmt:
+
+            # Log last action
+            self._log_movement(curr_stmt, prev_encoder)
             prev_encoder = self._sensor.get_encoders()
 
         # Stops robot
@@ -134,6 +136,7 @@ class DriveControl(threading.Thread):
             return self._should_stop()
 
         while time_left > 0:
+            start = time.time()
             # Tell the caller it needs to stop
             if self._should_stop():
                 return True
@@ -142,7 +145,8 @@ class DriveControl(threading.Thread):
             interval_time = interval
             if interval_time > time_left:
                 interval_time = time_left
-            time_left -= interval_time
+            # time_left -= sleep time + elapsed time
+            time_left -= (interval_time + (time.time()-start))
             time.sleep(interval_time)
         return False
 
@@ -246,7 +250,7 @@ class DriveControl(threading.Thread):
         elif stmt.startswith("Angle"):
             _log_stmt(self._log,
                       str(self._sensor.get_angle(prev_encoder,
-                                             cw=stmt.endswith("CCW")))
+                                             cw=not stmt.endswith("CCW")))
                       + " deg")
 
 
@@ -257,7 +261,7 @@ class RobotController(threading.Thread):
     """
     _stop = None
 
-    def __init__(self, sensor, log):
+    def __init__(self):
         threading.Thread.__init__(self)
         self.setDaemon(True)
         self._stop = False
@@ -296,7 +300,7 @@ class RobotController(threading.Thread):
         print "Connected to robot"
 
         print "Listening for press"
-        while True:
+        while not self._stop:
             # High-Level State Action
             if sensor.is_btn_pressed(robot_inf.Button.CLEAN):
                 _log_stmt(log, "BUTTON")
@@ -317,9 +321,10 @@ class RobotController(threading.Thread):
         print "Stopping Listening"
 
         # Stopping all threads, and closing log file
+        robot.change_state(robot_inf.State.PASSIVE)
         if act_control is not None:
             act_control.stop()
-        sensor.stop_update()
+        sensor.stop_update(join=True)
         log.close()
 
 
@@ -331,7 +336,7 @@ def main():
     control.start()
 
     # Prompt to exit safely
-    while input("Type 'exit' to quit.") != "exit":
+    while raw_input("Type 'exit' to quit.") != "exit":
         time.sleep(robot_inf.SENSOR_UPDATE_WAIT)
 
     control.stop()

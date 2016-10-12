@@ -388,7 +388,7 @@ class Robot:
 
             return {
                 Bump.BUMP_L: bool(byte & Bump.BUMP_L),
-                Bump.BUMP_R: bool(byte & Bump.BUMP_L)
+                Bump.BUMP_R: bool(byte & Bump.BUMP_R)
             }
         else:
             return {
@@ -612,7 +612,7 @@ class Robot:
 
         if len(diff) != 2:
             print "Not enough encoder values provided to calculate angle for" \
-                  "a differential drive system."
+                  " a differential drive system."
             return 0
 
         angle = (diff[Drive.ENCODER_R] - diff[Drive.ENCODER_L]) / WHEEL_BASE

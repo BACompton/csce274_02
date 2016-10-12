@@ -151,11 +151,17 @@ class Sensor:
             self._sensor_update.setDaemon(True)
             self._sensor_update.start()
 
-    def stop_update(self):
+    def stop_update(self, join=False):
         """ Stops the thread currently updating the internal sensor data.
+        :param join:
+            Flag to wait until the thread is stopped
         """
         if self._sensor_update is not None:
             self._sensor_update.stop()
+
+            if join:
+                self._sensor_update.join()
+
             self._sensor_update = None
 
     def get_robot(self):
@@ -249,18 +255,11 @@ class Sensor:
 
         return rtn
 
-    def is_bump(self, bump, src="Default", override=False):
+    def is_bump(self, bump):
         """ Determines if the specified bump is currently bumped.
 
-            Without overriding this should only be called once per cycle.
         :param bump:
             The bump to check
-        :type src str:
-        :param src:
-            The requesting source
-        :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
         :return:
             True if the bump is bumped.
         """
@@ -268,23 +267,16 @@ class Sensor:
 
         self._sensor_sema.acquire()             # Acquire Lock
 
-        value = self.bump_wheel[bump]
-        rtn = self._check_return(value, False, enc_function, src, override)
+        value = self.bumps[bump]
+        rtn = self._check_return(value, False, enc_function)
 
         self._sensor_sema.release()             # Release Lock
 
         return rtn
 
-    def get_bumps(self, src="Default", override=False):
+    def get_bumps(self):
         """ Gets all the bump sensor values.
 
-            Without overriding this should only be called once per cycle.
-        :type src str:
-        :param src:
-            The requesting source
-        :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
         :return:
             A dictionary with each bump sensors' value.
             See robot_inf.Robot.read_bumps() for entry referencing.
@@ -293,25 +285,18 @@ class Sensor:
 
         self._sensor_sema.acquire()             # Acquire Lock
 
-        value = self.bump_wheel.copy()
-        rtn = self._check_return(value, {}, enc_function, src, override)
+        value = self.bumps.copy()
+        rtn = self._check_return(value, {}, enc_function)
 
         self._sensor_sema.release()             # Release Lock
 
         return rtn
 
-    def is_wheel_dropped(self, wheel_drop, src="Default", override=False):
+    def is_wheel_dropped(self, wheel_drop):
         """ Determines if the specified wheel drop is currently dropped.
 
-            Without overriding this should only be called once per cycle.
         :param wheel_drop:
             The wheel drop to check
-        :type src str:
-        :param src:
-            The requesting source
-        :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
         :return:
             True if the wheel drop is dropped.
         """
@@ -319,23 +304,16 @@ class Sensor:
 
         self._sensor_sema.acquire()             # Acquire Lock
 
-        value = self._robot.read_wheel_drop(wheel_drop)
-        rtn = self._check_return(value, False, enc_function, src, override)
+        value = self.wheels[wheel_drop]
+        rtn = self._check_return(value, False, enc_function)
 
         self._sensor_sema.release()             # Release Lock
 
         return rtn
 
-    def get_wheel_drops(self, src="Default", override=False):
+    def get_wheel_drops(self):
         """ Gets all the wheel drop sensor values.
 
-            Without overriding this should only be called once per cycle.
-        :type src str:
-        :param src:
-            The requesting source
-        :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
         :return:
             A dictionary with each wheel drop sensors' value.
             See robot_inf.Robot.read_wheel_drops() for entry referencing.
@@ -345,25 +323,18 @@ class Sensor:
         self._sensor_sema.acquire()             # Acquire Lock
 
         value = self.wheels.copy()
-        rtn = self._check_return(value, {}, enc_function, src, override)
+        rtn = self._check_return(value, {}, enc_function)
 
         self._sensor_sema.release()             # Release Lock
 
         return rtn
 
-    def is_cliff(self, cliff, src="Default", override=False):
+    def is_cliff(self, cliff):
         """ Determines if there is a cliff or virtual wall is seen on the
             specified side.
 
-            Without overriding this should only be called once per cycle.
         :param cliff:
             The cliff or virtual wall to check
-        :type src str:
-        :param src:
-            The requesting source
-        :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
         :return:
             True if a cliff or virtual wall is present.
         """
@@ -372,22 +343,15 @@ class Sensor:
         self._sensor_sema.acquire()             # Acquire Lock
 
         value = self.cliffs[cliff]
-        rtn = self._check_return(value, False, enc_function, src, override)
+        rtn = self._check_return(value, False, enc_function)
 
         self._sensor_sema.release()             # Release Lock
 
         return rtn
 
-    def get_cliffs(self, src="Default", override=False):
+    def get_cliffs(self):
         """ Gets all cliff and virtual wall sensor data.
 
-            Without overriding this should only be called once per cycle.
-        :type src str:
-        :param src:
-            The requesting source
-        :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
         :return:
             A dictionary with each cliff and virtual wall sensors value.
             See robot_inf.Robot.read_cliffs() for entry referencing.
@@ -397,22 +361,15 @@ class Sensor:
         self._sensor_sema.acquire()             # Acquire Lock
 
         value = self.cliffs.copy()
-        rtn = self._check_return(value, {}, enc_function, src, override)
+        rtn = self._check_return(value, {}, enc_function)
 
         self._sensor_sema.release()             # Release Lock
 
         return rtn
 
-    def get_encoders(self, src="Default", override=False):
+    def get_encoders(self):
         """ Copies the current encoder values.
 
-            Without overriding this should only be called once per cycle.
-        :type src str:
-        :param src:
-            The requesting source
-        :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
         :return:
             A shallow copy of the current encoder values.
         """
@@ -421,7 +378,7 @@ class Sensor:
         self._sensor_sema.acquire()             # Acquire Lock
 
         value = self.encoders.copy()
-        rtn = self._check_return(value, {}, enc_function, src, override)
+        rtn = self._check_return(value, {}, enc_function)
 
         self._sensor_sema.release()             # Release Lock
 
@@ -477,7 +434,7 @@ class Sensor:
         if enc_function not in self.request_sources:
             self.request_sources[enc_function] = {}
 
-    def _check_return(self, value, default, funct, src, override):
+    def _check_return(self, value, default, funct, src="Default", override=True):
         """ Check against the request sources to see if the value
             should be returned.
 

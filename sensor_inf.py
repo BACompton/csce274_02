@@ -520,9 +520,9 @@ class Sensor:
         :return:
             The angle between two encoder values
         """
-        self._sensor_lock.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
         dist = self._robot.angle(ref_angle, radians=radians, cw=cw)
-        self._sensor_lock.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return dist
 

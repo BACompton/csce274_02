@@ -15,11 +15,11 @@ class SerialConn:
         Acts as the interface for a Serial connection
 
         :type _serial_conn serial.Serial
-        :type _sema threading.Semaphor
+        :type _send_lock threading.Semaphor
     """
     _DEFAULT_TIMEOUT = 1
     _serial_conn = None
-    _sema = None
+    _send_lock = None
 
     def __init__(self, port, buad, timeout=_DEFAULT_TIMEOUT):
         """ Initializes a serial connection by creating a connection if the port
@@ -35,7 +35,7 @@ class SerialConn:
         :param timeout:
             The read timeout in seconds
         """
-        self._sema = threading.Semaphore()
+        self._send_lock = threading.Lock()
         if port != "":
             self.connect(port, buad, timeout)
 
@@ -81,9 +81,9 @@ class SerialConn:
             encode_cmd += chr(int(code))
         # Sends the encoded command.
 
-        self._sema.acquire()                # Acquire Lock
+        self._send_lock.acquire()                # Acquire Lock
         rtn = self._serial_conn.write(encode_cmd)
-        self._sema.release()                # Release Lock
+        self._send_lock.release()                # Release Lock
         return rtn
 
     def read_data(self, bytes):

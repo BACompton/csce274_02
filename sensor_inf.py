@@ -7,6 +7,107 @@ import robot_inf
 
 
 # =============================================================================
+#                       Internal Read Write Lock
+# =============================================================================
+
+class _RWLock():
+    """
+        Is a simple reader-writer lock without promotion capability. This
+        allow multiple read operations but only one write operation.
+
+        :type _lock int
+        :type _writers int
+        :type _internal_lock threading.Lock
+        :type _reader_cond threading.Condition
+        :type _writer_cond threading.Condition
+    """
+
+    # Internal state variables
+    _lock = 0
+    _writers = 0
+
+    # Locking mechanisms
+    _internal_lock = None
+    _reader_cond = None
+    _writer_cond = None
+
+    def __init__(self):
+        # Internal state variables initialization
+        self._lock = 0
+        self._writers = 0
+
+        # Locking mechanisms initialization
+        self._internal_lock = threading.Lock()
+        self._reader_cond = threading.Condition(self._internal_lock)
+        self._writer_cond = threading.Condition(self._internal_lock)
+
+    def acquire_read(self):
+        """ Acquires a reader lock
+        """
+        self._internal_lock.acquire()
+
+        # While there are writers waiting or active
+        while self._writers > 0 or self._lock < 0:
+            self._reader_cond.wait()
+        # Update lock value
+        self._lock += 1
+
+        self._internal_lock.release()
+
+    def release_read(self):
+        """ Releases a reader lock
+        """
+        self._internal_lock.acquire()
+
+        # Update lock value
+        self._lock -= 1
+        self._wake()
+
+        self._internal_lock.release()
+
+    def acquire_write(self):
+        """ Acquire a write lock
+        """
+        self._internal_lock.acquire()
+
+        # While active readers or writers, wait and update waiting writers
+        while self._lock != 0:
+            self._writers += 1
+            self._writer_cond.wait()
+            self._writers -= 1
+
+        # Update lock value
+        self._lock -= 1
+
+        self._internal_lock.release()
+
+    def release_write(self):
+        """ Release writer lock
+        """
+        self._internal_lock.acquire()
+
+        self._lock += 1
+        self._wake()
+
+        self._internal_lock.release()
+
+    def _wake(self):
+        """ Decides whether to wake up waiting readers or writers.
+
+            The calling object should have already acquire the
+            internal lock before calling this method.
+        """
+        # If writer is waiting and there is no active reader or writer
+        if self._writers > 0 and self._lock == 0:
+            # Then Wake up the first writer
+            self._writer_cond.notify()
+
+        # Otherwise if there are no waiting writers
+        elif self._writers >= 0:
+            # Wake all readers
+            self._reader_cond.notifyAll()
+
+# =============================================================================
 #                       Internal Sensor Updater
 # =============================================================================
 
@@ -14,36 +115,41 @@ import robot_inf
 class _SensorUpdate(threading.Thread):
     """
         Updates the internal sensor values stored within an instance of Sensor.
+
+        :type _sensor Sensor
+        :type _sensor_lock _RWLock
+        :type _interval float
+        :type _stop bool
     """
 
     _sensor = None          # Instance of Sensor
-    _sensor_sema = None     # The semaphor used to control read/write access
+    _sensor_lock = None     # The semaphor used to control read/write access
     _interval = None        # The interval between updates
     _stop = False           # The stopping condition
 
-    def __init__(self, sensor, semaphor, interval=robot_inf.SENSOR_UPDATE_WAIT):
+    def __init__(self, sensor, lock, interval=robot_inf.SENSOR_UPDATE_WAIT):
         """ Initializes an instance of SensorUpdate with a specified sensor,
             and semaphor.
 
-        :type sensor Sensor:
+        :type sensor Sensor
         :param sensor:
             The instance of Sensor to update.
-        :type semaphor Semaphor:
-        :param semaphor:
+        :type lock _RWLock
+        :param lock:
             The semaphor that is used to control read and write access.
         :param interval:
             The interval between sensor updates
         """
         threading.Thread.__init__(self)
         self._sensor = sensor
-        self._sensor_sema = semaphor
+        self._sensor_sema = lock
         self._interval = interval
 
     def run(self):
         robot = self._sensor.get_robot()
 
         while not self._stop:
-            self._sensor_sema.acquire()         # Acquire Lock
+            self._sensor_sema.acquire_write()         # Acquire Lock
 
             # Update Buttons
             self._sensor.request_sources.clear()
@@ -66,7 +172,7 @@ class _SensorUpdate(threading.Thread):
             # Update encoders
             self._sensor.encoders = robot.read_encoders()
 
-            self._sensor_sema.release()         # Release Lock
+            self._sensor_sema.release_write()         # Release Lock
 
             time.sleep(self._interval)
 
@@ -104,12 +210,12 @@ class Sensor:
             encoders: A dictionary of all encoders
 
         :type _robot robot_inf.Robot
-        :type _sensor_sema threading.Semaphor
+        :type _sensor_lock _RWLock
         :type _sensor_update _SensorUpdate
         :type _interval float
     """
     _robot = None
-    _sensor_sema = None
+    _sensor_lock = None
     _sensor_update = None
     _interval = robot_inf.SENSOR_UPDATE_WAIT
 
@@ -132,7 +238,7 @@ class Sensor:
             The interval between sensor updates
         """
         self._robot = robot
-        self._sensor_sema = threading.Semaphore()
+        self._sensor_lock = _RWLock()
         self._interval = interval
         self.start_update()
 
@@ -146,7 +252,7 @@ class Sensor:
         """
         if self._sensor_update is None:
             self._sensor_update = _SensorUpdate(self,
-                                                self._sensor_sema,
+                                                self._sensor_lock,
                                                 self._interval)
             self._sensor_update.setDaemon(True)
             self._sensor_update.start()
@@ -192,13 +298,13 @@ class Sensor:
         """
         enc_function = "BtnPress"+str(btn)
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         # rtn = not down on previous cycle and is down on current cycle
         value = btn not in self.btn_prev and btn in self.btn_down
         rtn = self._check_return(value, False, enc_function, src, override)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -219,13 +325,13 @@ class Sensor:
         """
         enc_function = "BtnRelease"+str(btn)
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         # rtn = down on previous cycle and is not down on current cycle
         value = btn in self.btn_prev and btn not in self.btn_down
         rtn = self._check_return(value, False, enc_function, src, override)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -246,12 +352,12 @@ class Sensor:
         """
         enc_function = "BtnDown"+str(btn)
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = btn in self.btn_down
         rtn = self._check_return(value, False, enc_function, src, override)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -265,12 +371,12 @@ class Sensor:
         """
         enc_function = "Bump"+str(bump)
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = self.bumps[bump]
         rtn = self._check_return(value, False, enc_function)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -283,12 +389,12 @@ class Sensor:
         """
         enc_function = "Bumps"
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = self.bumps.copy()
         rtn = self._check_return(value, {}, enc_function)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -302,12 +408,12 @@ class Sensor:
         """
         enc_function = "WheelDrop"
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = self.wheels[wheel_drop]
         rtn = self._check_return(value, False, enc_function)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -320,12 +426,12 @@ class Sensor:
         """
         enc_function = "WheelDrops"
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = self.wheels.copy()
         rtn = self._check_return(value, {}, enc_function)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -340,12 +446,12 @@ class Sensor:
         """
         enc_function = "Cliff"
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = self.cliffs[cliff]
         rtn = self._check_return(value, False, enc_function)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -358,12 +464,12 @@ class Sensor:
         """
         enc_function = "Cliffs"
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = self.cliffs.copy()
         rtn = self._check_return(value, {}, enc_function)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -375,12 +481,12 @@ class Sensor:
         """
         enc_function = "Encoders"
 
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
 
         value = self.encoders.copy()
         rtn = self._check_return(value, {}, enc_function)
 
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return rtn
 
@@ -395,9 +501,9 @@ class Sensor:
         :return:
             The distance between two encoder values
         """
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire_read()             # Acquire Lock
         dist = self._robot.distance(ref_dist, forward=forward)
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release_read()             # Release Lock
 
         return dist
 
@@ -414,9 +520,9 @@ class Sensor:
         :return:
             The angle between two encoder values
         """
-        self._sensor_sema.acquire()             # Acquire Lock
+        self._sensor_lock.acquire()             # Acquire Lock
         dist = self._robot.angle(ref_angle, radians=radians, cw=cw)
-        self._sensor_sema.release()             # Release Lock
+        self._sensor_lock.release()             # Release Lock
 
         return dist
 

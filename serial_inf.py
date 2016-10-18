@@ -15,11 +15,13 @@ class SerialConn:
         Acts as the interface for a Serial connection
 
         :type _serial_conn serial.Serial
-        :type _send_lock threading.Semaphor
+        :type _send_lock threading.Lock
+        :type _read_lock threading.Lock
     """
     _DEFAULT_TIMEOUT = 1
     _serial_conn = None
     _send_lock = None
+    _read_lock = None
 
     def __init__(self, port, buad, timeout=_DEFAULT_TIMEOUT):
         """ Initializes a serial connection by creating a connection if the port
@@ -36,6 +38,7 @@ class SerialConn:
             The read timeout in seconds
         """
         self._send_lock = threading.Lock()
+        self._read_lock = threading.Lock()
         if port != "":
             self.connect(port, buad, timeout)
 
@@ -86,19 +89,23 @@ class SerialConn:
         self._send_lock.release()                # Release Lock
         return rtn
 
-    def read_data(self, bytes):
+    def read_data(self, numBytes):
         """ Reads data on the provided serial connection. If a timeout is set on
             the serial connection, then this may read less than requested.
             However, if no timeout is set, then it will block until the
             requested number of bytes have been read.
 
-        :type bytes int:
-        :param bytes:
+        :type numBytes int:
+        :param numBytes:
             The number of bytes to read from the serial connection.
         :return:
             The bytes read from the serial connection.
         """
-        return self._serial_conn.read(bytes)
+        self._read_lock.acquire()               # Acquire Lock
+        rtn = self._serial_conn.read(numBytes)
+        self._read_lock.release()               # Release Lock
+
+        return rtn
 
 # =============================================================================
 #                       Serial Communication Helpers

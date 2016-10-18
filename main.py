@@ -51,7 +51,7 @@ class DriveControl(threading.Thread):
 
         :type _sensor sensor_inf.Sensor
         :type _log file
-        :type _log_unsafe bool
+        :type _log_unsafe str
         :type _stop bool
     """
     _sensor = None
@@ -64,7 +64,7 @@ class DriveControl(threading.Thread):
         self.setDaemon(True)
         self._stop = False
         self._sensor = sensor
-        self._log_unsafe = False
+        self._log_unsafe = ""
         self._log = log
 
     def run(self):
@@ -169,7 +169,7 @@ class DriveControl(threading.Thread):
 
         for drop in drops:
             if drops[drop]:
-                self._log_unsafe = True
+                self._log_unsafe = "Wheel Drop"
                 return False
         return True
 
@@ -183,7 +183,7 @@ class DriveControl(threading.Thread):
         if self._sensor.is_bump(robot_inf.Bump.BUMP_L):
             return True
         if cliffs[robot_inf.Cliff.CLIFF_L] or cliffs[robot_inf.Cliff.CLIFF_FL]:
-            self._log_unsafe = True
+            self._log_unsafe = "Cliff"
             return True
         return False
 
@@ -197,7 +197,7 @@ class DriveControl(threading.Thread):
         if self._sensor.is_bump(robot_inf.Bump.BUMP_R):
             return True
         if cliffs[robot_inf.Cliff.CLIFF_R] or cliffs[robot_inf.Cliff.CLIFF_FR]:
-            self._log_unsafe = True
+            self._log_unsafe = "Cliff"
             return True
         return False
 
@@ -253,10 +253,10 @@ class DriveControl(threading.Thread):
                                              cw=not stmt.endswith("CCW")))
                       + " deg")
 
-        if self._log_unsafe:
-                self._log_unsafe = False
+        if self._log_unsafe != "":
+                self._log_unsafe = ""
                 self._sensor.get_robot().play_warning_song()
-                _log_stmt(self._log, "UNSAFE")
+                _log_stmt(self._log, "UNSAFE "+str(self._log_unsafe))
 
 
 class RobotController(threading.Thread):

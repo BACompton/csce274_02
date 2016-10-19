@@ -78,7 +78,7 @@ class DriveControl(threading.Thread):
         # The reference encoder value for the log statement
         prev_encoder = self._sensor.get_encoders()
 
-        while not self._wait(wait_time, robot_inf.SENSOR_UPDATE_WAIT):
+        while not self._wait(wait_time, robot_inf.SENSOR_UPDATE_WAIT, next_stmt):
             # Generate random turn time
             wait_time = random.uniform(0, max_rot_time)
             cw = self._turn_cw()                # Turn cw?
@@ -120,7 +120,7 @@ class DriveControl(threading.Thread):
         """
         self._stop = True
 
-    def _wait(self, wait_time, interval):
+    def _wait(self, wait_time, interval, action):
         """ Internal method that divides the time in between actuator
             commands into small intervals. This enables the ability
             to check for the stopping condition while running an action.
@@ -129,6 +129,8 @@ class DriveControl(threading.Thread):
             The total amount of time to wait
         :param interval:
             The amount of time for a single interval.
+        :param action:
+            The last action issued the robot
         :return:
             True if the stopping condition was detected, otherwise false.
         """
@@ -144,11 +146,16 @@ class DriveControl(threading.Thread):
             if self._should_stop():
                 return True
 
+            # Checks for the turning conditions when moving forward
+            if action == "Distance" and (self._turn_cw() or self._turn_ccw()):
+                return False
+
             # Wait another time interval
             interval_time = interval
             if interval_time > time_left:
                 interval_time = time_left
             # time_left -= sleep time + elapsed time
+
             time_left -= (interval_time + (time.time()-start))
             time.sleep(interval_time)
         return False
@@ -254,9 +261,9 @@ class DriveControl(threading.Thread):
                       + " deg")
 
         if self._log_unsafe != "":
-                self._log_unsafe = ""
-                self._sensor.get_robot().play_warning_song()
-                _log_stmt(self._log, "UNSAFE "+str(self._log_unsafe))
+            self._sensor.get_robot().play_warning_song()
+            _log_stmt(self._log, "UNSAFE "+str(self._log_unsafe))
+            self._log_unsafe = ""
 
 
 class RobotController(threading.Thread):
@@ -311,7 +318,7 @@ class RobotController(threading.Thread):
                 _log_stmt(log, "BUTTON")
 
                 # Start actuator controller
-                if act_control is None:
+                if act_control is None or not act_control.isAlive():
                     act_control = DriveControl(sensor, log)
                     act_control.start()
 

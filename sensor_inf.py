@@ -291,8 +291,8 @@ class Sensor:
         :param src:
             The requesting source
         :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
+            Flag to override the check for a repeated poll of the same
+            sensor data.
         :return:
             True if the button is pressed.
         """
@@ -318,8 +318,8 @@ class Sensor:
         :param src:
             The requesting source
         :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
+            Flag to override the check for a repeated poll of the same
+            sensor data.
         :return:
             True if the button is released.
         """
@@ -345,8 +345,8 @@ class Sensor:
         :param src:
             The requesting source
         :param override:
-            Flag to override the check for a repeated poll of the same sensor
-            data.
+            Flag to override the check for a repeated poll of the same
+            sensor data.
         :return:
             True if the button is down.
         """

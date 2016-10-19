@@ -422,7 +422,7 @@ class Robot:
             A dictionary of all the wheel drops' values. Each record is
             addressed by the value in WheelDrop. Thus, the individual wheel
             drop values can be acquired by like so:
-                drop_l = someRobot.read_wheel_drops()[WheelDrop.WHEEL_DROP_L]
+               drop_l = someRobot.read_wheel_drops()[WheelDrop.WHEEL_DROP_L]
         """
         data = self._read_packet(WheelDrop.PACKET_ID, WheelDrop.DATA_BYTES)
 
@@ -445,9 +445,9 @@ class Robot:
             in the PASSIVE, SAFE, or FULL state.
 
         :return:
-            A dictionary of all the bump and wheel drop values. Each record is
-            addressed by the value in Bump or WheelDrop. Thus, the individual
-            bump or wheel drop values can be acquired by like so:
+            A dictionary of all the bump and wheel drop values. Each record
+            is addressed by the value in Bump or WheelDrop. Thus, the
+            individual bump or wheel drop values can be acquired by like so:
                 bump_l = someRobot.read_bump_wheel_drop()[Bump.BUMP_L]
         """
 
@@ -495,8 +495,8 @@ class Robot:
             available to a robot in the PASSIVE, SAFE, or FULL state.
 
         :return:
-            A dictionary of all the cliff and virtual wall sensors. Each record
-            is addressed by the value in Cliff. Thus, the
+            A dictionary of all the cliff and virtual wall sensors. Each
+            record is addressed by the value in Cliff. Thus, the
             individual cliff values can be acquired by like so:
                 cliff_l = someRobot.read_cliff()[Cliff.CLIFF_L]
         """

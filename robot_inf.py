@@ -615,7 +615,7 @@ class Robot:
                   " a differential drive system."
             return 0
 
-        angle = (diff[Drive.ENCODER_R] - diff[Drive.ENCODER_L]) / WHEEL_BASE
+        angle = (diff[Drive.ENCODER_L] - diff[Drive.ENCODER_R]) / WHEEL_BASE
 
         if radians:
             return angle

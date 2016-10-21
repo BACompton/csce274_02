@@ -65,6 +65,17 @@ Group 3: Boyd Compton, Timothy Senn, & Jose Tadeo
             import main
             help(main)
 
+---------------
+- plot_log.py -
+---------------
+	Dependences:
+		
+	Description:
+	
+	Execution:
+	
+	Additional Help:
+
 ----------------
 - robot_inf.py -
 ----------------

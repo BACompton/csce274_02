@@ -18,6 +18,8 @@ import sensor_inf
 # =============================================================================
 
 # Flag for testing adjustments. This will mainly decide the robot's state.
+default_log = "robot_log.log"
+
 _prog_test = False
 _log_sema = threading.Semaphore()
 
@@ -41,7 +43,7 @@ def _log_stmt(log, datum):
         The data to log
     """
     _log_sema.acquire()                 # Acquire Lock
-    log.write(_timestamp()+","+str(datum)+"\n")
+    log.write(_timestamp()+", "+str(datum)+"\n")
     _log_sema.release()                 # Release Lock
 
 
@@ -287,7 +289,7 @@ class RobotController(threading.Thread):
 
     def run(self):
         port_list = serial_inf.list_serial_ports()
-        file_name = "robot_log.log"
+        file_name = default_log
 
         if len(port_list) > 1:
             print "Requires a serial connection."

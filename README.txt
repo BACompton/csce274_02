@@ -68,12 +68,12 @@ Group 3: Boyd Compton, Timothy Senn, & Jose Tadeo
 ---------------
 - plot_log.py -
 ---------------
-	Dependences:
+    Dependences:
         - matplotlib
         
         Matplotlib will need to be installed in the system.
 		
-	Description:
+    Description:
         Plot_log.py will process the log files generated from main.py into a
         visual represenetaion of the robot's path. While parsing the log file,
         the indiviual runs will be seprated and displayed by a line with a
@@ -92,7 +92,7 @@ Group 3: Boyd Compton, Timothy Senn, & Jose Tadeo
         execution of main.py. Once you are finished with the plot, simply close
         out of the window to terminate plot_log.py.
 	
-	Additional Help:
+    Additional Help:
         For additional help, import the plot_log.py module and issue the python
         help function. Example as shown:
 
